@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cs_postgres
+    environment:
+      POSTGRES_DB: customer_service
+      POSTGRES_USER: cs_admin
+      POSTGRES_PASSWORD: cs_secret_2024
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cs_admin -d customer_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cs_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --notify-keyspace-events Ex
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.0
+    container_name: cs_qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - ./docker/qdrant/config.yaml:/qdrant/config/production.yaml
+
+  backend:
+    build:
+      context: ./backend
+    container_name: cs_backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cs_admin:cs_secret_2024@postgres:5432/customer_service
+      DATABASE_URL_SYNC: postgresql://cs_admin:cs_secret_2024@postgres:5432/customer_service
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      CORS_ORIGINS: http://localhost,http://localhost:5173
+    ports:
+      - "8000:8000"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: cs_frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  pg_data:
+  redis_data:
+  qdrant_data:

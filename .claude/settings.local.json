@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(python -c ' *)",
+      "Bash(python *)",
+      "Bash(pip install *)",
+      "Bash(alembic upgrade *)",
+      "Bash(docker compose *)",
+      "Bash(uvicorn app.main:app --reload --host 0.0.0.0 --port 8000)",
+      "Bash(curl -s http://localhost:8000/api/v1/health)",
+      "Bash(pkill -9 -f \"uvicorn\")",
+      "Bash(nohup uvicorn app.main:app --reload --host 0.0.0.0 --port 8000)",
+      "Bash(taskkill *)",
+      "Bash(nohup npm run dev)",
+      "Read(//tmp/**)",
+      "Bash(netstat -ano)",
+      "Bash(curl *)",
+      "Bash(pip list *)",
+      "Bash(python3 *)",
+      "Bash(pip show *)"
+    ]
+  }
+}

@@ -1,0 +1,56 @@
+[
+  {
+    "name": "订单物流查询（FAQ自动回答）",
+    "description": "用户查询订单物流状态，AI通过意图识别→FAQ Agent→RAG检索→生成回答全程自动处理。",
+    "steps": [
+      {"role": "customer", "content": "你好，我想查一下我的订单到哪里了"},
+      {"role": "agent", "expected_intent": "order_inquiry", "expected_route": "faq_answer"},
+      {"role": "customer", "content": "我下单已经3天了，物流信息一直没更新"},
+      {"role": "agent", "expected_intent": "shipping", "expected_route": "faq_answer"}
+    ],
+    "expected_resolution": "ai_answered"
+  },
+  {
+    "name": "退款退货（创建工单）",
+    "description": "用户收到破损商品要求退款，AI识别为退款意图→创建工单→SLA计算→转后台处理。",
+    "steps": [
+      {"role": "customer", "content": "我收到的商品是坏的，我要退款"},
+      {"role": "agent", "expected_intent": "refund", "expected_route": "create_ticket"},
+      {"role": "customer", "content": "盒子都压扁了，里面的东西也碎了"},
+      {"role": "agent", "expected_intent": "refund", "expected_route": "create_ticket"}
+    ],
+    "expected_resolution": "ticket_created"
+  },
+  {
+    "name": "情绪愤怒自动转人工",
+    "description": "用户情绪激动，AI检测到愤怒情绪→触发词检测→自动升级转人工。",
+    "steps": [
+      {"role": "customer", "content": "你们这是什么破服务！我打了三次电话都没人接！"},
+      {"role": "agent", "expected_sentiment": "angry", "expected_route": "escalate_to_human"},
+      {"role": "customer", "content": "我要投诉！把你们经理叫来！再不处理我就打315！"},
+      {"role": "agent", "expected_sentiment": "desperate", "expected_route": "escalate_to_human"}
+    ],
+    "expected_resolution": "escalated"
+  },
+  {
+    "name": "VIP客户优先服务",
+    "description": "VIP用户咨询问题，AI识别VIP身份→升级服务等级→更详细的回答+主动关怀。",
+    "steps": [
+      {"role": "customer", "content": "我刚买的产品好像有点问题，开机后屏幕一直闪"},
+      {"role": "agent", "expected_intent": "tech_support", "profile_tier": "vip"}
+    ],
+    "expected_resolution": "vip_priority"
+  },
+  {
+    "name": "工单闭环流程（坐席侧）",
+    "description": "完整工单生命周期：新建→分配→处理中→已解决→已关闭。在坐席工作台操作。",
+    "steps": [
+      {"role": "system", "action": "ticket_created", "display_id": "TK-20240701-0001"},
+      {"role": "agent_staff", "action": "claim_ticket"},
+      {"role": "agent_staff", "action": "start_working"},
+      {"role": "agent_staff", "action": "resolve", "resolution": "已联系物流重新配送，预计明天送达。用户表示接受。"},
+      {"role": "system", "action": "auto_close_after_24h"}
+    ],
+    "expected_resolution": "ticket_closed"
+  }
+]
