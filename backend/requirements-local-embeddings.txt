@@ -1,0 +1,4 @@
+# Optional fallback for running embeddings locally instead of through the
+# configured OpenAI-compatible embedding API. This pulls PyTorch and makes the
+# image substantially larger, so it is intentionally excluded from Docker.
+sentence-transformers>=3.3.0,<6.0.0

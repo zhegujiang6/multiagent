@@ -44,11 +44,13 @@ export interface Sentiment {
 export type Priority = "low" | "medium" | "high" | "critical";
 
 export type TicketStatus =
-  | "open"
+  | "new"
+  | "assigned"
   | "in_progress"
   | "pending"
   | "resolved"
-  | "closed";
+  | "closed"
+  | "reopened";
 
 export interface TicketSummary {
   id: string;
@@ -106,6 +108,7 @@ export type WsMessageType =
   | "agent_status"
   | "ticket_created"
   | "ticket_updated"
+  | "ticket_sla_overdue"
   | "typing"
   | "error"
   | "pong"

@@ -46,50 +46,6 @@ CREATE TABLE users (
 );
 
 -- ============================================
--- Tickets & Ticket Events
--- ============================================
-
-CREATE TABLE tickets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    display_id VARCHAR(20) UNIQUE NOT NULL,
-    conversation_id UUID REFERENCES conversations(id),
-    customer_id UUID REFERENCES users(id),
-    title VARCHAR(500) NOT NULL,
-    description TEXT,
-    category VARCHAR(100),
-    priority VARCHAR(10) NOT NULL DEFAULT 'P3' CHECK (priority IN ('P0', 'P1', 'P2', 'P3')),
-    status VARCHAR(30) NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'assigned', 'in_progress', 'pending', 'waiting', 'resolved', 'closed', 'reopened')),
-    assigned_to VARCHAR(255),
-    assigned_dept VARCHAR(100),
-    sla_deadline TIMESTAMPTZ,
-    sla_response_deadline TIMESTAMPTZ,
-    sla_warning_sent BOOLEAN DEFAULT false,
-    sla_escalated BOOLEAN DEFAULT false,
-    resolution TEXT,
-    parent_ticket_id UUID REFERENCES tickets(id),
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    resolved_at TIMESTAMPTZ,
-    closed_at TIMESTAMPTZ
-);
-CREATE INDEX idx_tickets_status ON tickets(status);
-CREATE INDEX idx_tickets_customer ON tickets(customer_id);
-CREATE INDEX idx_tickets_assignee ON tickets(assigned_to);
-CREATE INDEX idx_tickets_sla ON tickets(sla_deadline);
-
-CREATE TABLE ticket_events (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ticket_id UUID NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
-    from_status VARCHAR(30),
-    to_status VARCHAR(30) NOT NULL,
-    triggered_by VARCHAR(50) NOT NULL,
-    comment TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX idx_ticket_events_ticket ON ticket_events(ticket_id, created_at);
-
--- ============================================
 -- Knowledge Base
 -- ============================================
 
@@ -99,7 +55,8 @@ CREATE TABLE knowledge_articles (
     content TEXT NOT NULL,
     category VARCHAR(100),
     tags JSONB DEFAULT '[]',
-    source_ticket_id UUID REFERENCES tickets(id),
+    -- Opaque ID owned by the Java ticket service; no cross-service foreign key.
+    source_ticket_id VARCHAR(64),
     status VARCHAR(30) DEFAULT 'draft' CHECK (status IN ('draft', 'review', 'published', 'deprecated', 'approved', 'rejected', 'gap')),
     effectiveness_score FLOAT DEFAULT 0,
     usage_count INT DEFAULT 0,

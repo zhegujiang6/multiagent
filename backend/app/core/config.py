@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
+    # Java ticket business service
+    ticket_service_url: str = "http://localhost:8080"
+    ticket_service_timeout_seconds: float = 5.0
+
+    # RocketMQ events emitted by the Java ticket service
+    rocketmq_consumer_enabled: bool = False
+    rocketmq_name_server: str = "localhost:9876"
+    rocketmq_consumer_group: str = "python-ticket-event-consumer"
+
     # Qdrant
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""

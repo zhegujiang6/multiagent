@@ -7,6 +7,22 @@ import { useChat } from "./useChat";
 import { useCustomerServiceStore } from "@/store/customerServiceStore";
 
 const API_BASE = "/api/v1";
+const VISITOR_ID_KEY = "customer-service-visitor-id";
+
+function getPersistentVisitorId(): string {
+  try {
+    const existing = window.localStorage.getItem(VISITOR_ID_KEY);
+    if (existing) return existing;
+
+    const id = `visitor_${crypto.randomUUID()}`;
+    window.localStorage.setItem(VISITOR_ID_KEY, id);
+    return id;
+  } catch {
+    // Privacy-restricted browsers still work, but deliberately do not receive
+    // cross-session memory because there is no stable user identity.
+    return "anonymous";
+  }
+}
 
 interface ChatWidgetProps {
   embedded?: boolean;
@@ -29,6 +45,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
 
   const [error, setError] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
+  const [customerId] = useState(getPersistentVisitorId);
 
   // Create conversation on mount
   useEffect(() => {
@@ -39,7 +56,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            customer_id: "anonymous",
+            customer_id: customerId,
             channel: "web",
           }),
         });
@@ -62,7 +79,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [setConversationId]);
+  }, [customerId, setConversationId]);
 
   const handleRetry = useCallback(() => {
     setError(null);
@@ -74,7 +91,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customer_id: "anonymous",
+          customer_id: customerId,
           channel: "web",
         }),
       })
@@ -90,7 +107,7 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
         )
         .finally(() => setInitializing(false));
     }, 100);
-  }, [setConversationId]);
+  }, [customerId, setConversationId]);
 
   // Loading state
   if (initializing) {

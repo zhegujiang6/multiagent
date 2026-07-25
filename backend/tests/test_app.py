@@ -11,6 +11,7 @@ def test_required_routes_are_registered() -> None:
         "/",
         "/api/v1/health",
         "/api/v1/conversations",
+        "/api/v1/conversations/{conversation_id}/memory",
         "/api/v1/tickets",
         "/api/v1/knowledge/articles",
     } <= paths

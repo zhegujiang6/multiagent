@@ -19,6 +19,12 @@ from app.schemas.agent import AgentState
 from app.schemas.chat import AgentStatusMessage
 from app.agents.registry import AgentRegistry
 from app.agents.orchestrator import OrchestratorAgent
+from app.services.memory_service import (
+    RECENT_MESSAGE_LIMIT,
+    format_memory_for_prompt,
+    load_memory_context,
+    update_memories,
+)
 
 logger = logging.getLogger("customer_service.services.conversation")
 
@@ -47,7 +53,11 @@ async def create_conversation(
         await session.flush()
         await session.refresh(conv)
         await session.commit()
-        return conv
+    # This is intentionally separate from the conversation transaction: legacy
+    # anonymous conversations do not get a shared user-memory record.
+    from app.services.memory_service import ensure_user_memory
+    await ensure_user_memory(customer_id)
+    return conv
 
 
 async def get_conversation(conversation_id: str) -> Conversation | None:
@@ -120,6 +130,53 @@ async def log_agent_run(
         await session.commit()
 
 
+async def build_agent_state(
+    conversation_id: str,
+    customer_id: str,
+) -> AgentState:
+    """Build bounded raw context plus persistent structured memory."""
+    recent_messages = await get_messages(conversation_id, limit=RECENT_MESSAGE_LIMIT)
+    history = [
+        {"role": ROLE_MAP.get(message.role, "user"), "content": message.content}
+        for message in recent_messages
+    ]
+    session_memory, user_memory = await load_memory_context(conversation_id, customer_id)
+    return AgentState(
+        messages=history,
+        conversation_id=conversation_id,
+        customer_id=customer_id,
+        session_memory=session_memory,
+        user_memory=user_memory,
+        memory_context=format_memory_for_prompt(session_memory, user_memory),
+    )
+
+
+async def finalize_conversation_state(
+    *,
+    conversation_id: str,
+    customer_id: str,
+    user_message: str,
+    final_state: dict,
+) -> dict:
+    """Persist analytics and the compact task memory after every assistant reply."""
+    async with async_session_factory() as session:
+        conv = await session.get(Conversation, conversation_id)
+        if conv:
+            conv.updated_at = datetime.now(timezone.utc)
+            if final_state.get("sentiment"):
+                trend = list(conv.sentiment_trend) if conv.sentiment_trend else []
+                trend.append(final_state["sentiment"])
+                conv.sentiment_trend = trend[-20:]
+            await session.commit()
+
+    return await update_memories(
+        conversation_id=conversation_id,
+        customer_id=customer_id,
+        user_message=user_message,
+        final_state=final_state,
+    )
+
+
 async def process_message(
     conversation_id: str,
     user_message: str,
@@ -140,19 +197,9 @@ async def process_message(
         content=user_message,
     )
 
-    # 2. Get recent conversation history
-    recent_messages = await get_messages(conversation_id)
-    history = [
-        {"role": ROLE_MAP.get(m.role, "user"), "content": m.content}
-        for m in recent_messages[-10:]  # Last 10 messages for context
-    ]
-
-    # 3. Build initial agent state
-    state = AgentState(
-        messages=history,
-        conversation_id=conversation_id,
-        customer_id=customer_id,
-    )
+    # 2. Build bounded raw context plus compact session and user memory.
+    state = await build_agent_state(conversation_id, customer_id)
+    state["request_id"] = f"message-{user_msg.id}"
 
     # 4. Initialize agent system
     llm_client = get_async_llm_client()
@@ -186,16 +233,13 @@ async def process_message(
         },
     )
 
-    # 7. Update conversation
-    async with async_session_factory() as session:
-        conv = await session.get(Conversation, conversation_id)
-        if conv:
-            conv.updated_at = datetime.now(timezone.utc)
-            # Append sentiment
-            if final_state.get("sentiment"):
-                trend = list(conv.sentiment_trend) if conv.sentiment_trend else []
-                trend.append(final_state["sentiment"])
-                conv.sentiment_trend = trend[-20:]  # Keep last 20
+    # 7. Update conversation analytics and durable task/user memory.
+    session_memory = await finalize_conversation_state(
+        conversation_id=conversation_id,
+        customer_id=customer_id,
+        user_message=user_message,
+        final_state=final_state,
+    )
 
     elapsed = int((time.monotonic() - start_time) * 1000)
     await log_agent_run(
@@ -219,6 +263,7 @@ async def process_message(
         "escalated": final_state.get("should_escalate", False),
         "intent": final_state.get("intent"),
         "sentiment": final_state.get("sentiment"),
+        "session_memory": session_memory,
     }
 
 
@@ -241,19 +286,9 @@ async def process_message_streaming(
     # Yield: message saved
     yield {"type": "message_saved", "message_id": str(user_msg.id)}
 
-    # Get history
-    recent_messages = await get_messages(conversation_id)
-    history = [
-        {"role": ROLE_MAP.get(m.role, "user"), "content": m.content}
-        for m in recent_messages[-10:]
-    ]
-
-    # Build state
-    state = AgentState(
-        messages=history,
-        conversation_id=conversation_id,
-        customer_id=customer_id,
-    )
+    # Build bounded raw context plus compact session and user memory.
+    state = await build_agent_state(conversation_id, customer_id)
+    state["request_id"] = f"message-{user_msg.id}"
 
     # Initialize agents
     llm_client = get_async_llm_client()
@@ -330,11 +365,19 @@ async def process_message_streaming(
         },
     )
 
+    session_memory = await finalize_conversation_state(
+        conversation_id=conversation_id,
+        customer_id=customer_id,
+        user_message=user_message,
+        final_state=final_state,
+    )
+
     # Yield ticket info if created
     if final_state.get("ticket_draft"):
         yield {
             "type": "ticket_created",
             "draft": final_state["ticket_draft"],
+            "ticket": final_state.get("ticket"),
         }
 
     if final_state.get("should_escalate"):
@@ -343,6 +386,7 @@ async def process_message_streaming(
     # Final response
     yield {
         "type": "chat_message",
+        "memory": session_memory,
         "message": {
             "id": str(agent_msg.id),
             "conversation_id": conversation_id,

@@ -116,7 +116,8 @@ class FAQAgent(BaseAgent):
         knowledge_context = build_knowledge_context(knowledge_results)
         profile = state.get("profile", {})
         tier = profile.get("tier", "standard") if profile else "standard"
-        context = f"用户类型: {tier}\n\n知识库:\n{knowledge_context}\n\n用户问题: {user_text}"
+        memory_context = state.get("memory_context", "")
+        context = f"{memory_context}\n\n用户类型: {tier}\n\n知识库:\n{knowledge_context}\n\n用户问题: {user_text}"
 
         try:
             raw = await self._call_llm(

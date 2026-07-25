@@ -42,7 +42,7 @@ def _canonical_key(
     title: str,
     content: str,
     source_type: str,
-    source_ticket_id: uuid.UUID | None,
+    source_ticket_id: str | None,
     source_conversation_id: uuid.UUID | None,
 ) -> str:
     if source_ticket_id:
@@ -123,7 +123,7 @@ async def create_knowledge_article(
     content: str,
     category: str | None = None,
     tags: list | None = None,
-    source_ticket_id: uuid.UUID | None = None,
+    source_ticket_id: str | None = None,
     source_conversation_id: uuid.UUID | None = None,
     status: str = "draft",
     meta_info: dict | None = None,

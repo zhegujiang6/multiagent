@@ -1,6 +1,5 @@
 """FastAPI application entry point."""
 
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -11,6 +10,8 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.core.redis import get_redis, close_redis
 from app.middleware.logging import LoggingMiddleware
+from app.clients.java_ticket_client import close_java_ticket_client
+from app.mq.ticket_event_consumer import ticket_event_consumer
 
 # Configure logging
 logging.basicConfig(
@@ -27,30 +28,16 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Customer Service Agent...")
     await get_redis()
 
-    # Start SLA polling as background task
-    sla_task = asyncio.create_task(_sla_polling())
+    # Ticket lifecycle and SLA checks live in Java. Python only consumes events.
+    await ticket_event_consumer.start()
 
     yield
 
     # Shutdown
     logger.info("Shutting down...")
-    sla_task.cancel()
-    try:
-        await sla_task
-    except asyncio.CancelledError:
-        pass
+    await ticket_event_consumer.stop()
+    await close_java_ticket_client()
     await close_redis()
-
-
-async def _sla_polling():
-    """Background SLA polling loop."""
-    try:
-        from app.services.sla_service import sla_polling_loop
-        await sla_polling_loop()
-    except asyncio.CancelledError:
-        raise
-    except Exception as e:
-        logger.error(f"SLA polling failed to start: {e}")
 
 
 app = FastAPI(

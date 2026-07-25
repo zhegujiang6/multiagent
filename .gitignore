@@ -35,5 +35,23 @@ qdrant_data/
 *.log
 logs/
 
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
 # Alembic
 backend/alembic/versions/*.pyc
+ticket-service/target/
+ticket-service/.idea/
+ticket-service/*.iml
+
+# Local AI assistant settings
+.claude/
+.agent/
+.agents/
+.codex/

@@ -41,6 +41,59 @@ services:
       - qdrant_data:/qdrant/storage
       - ./docker/qdrant/config.yaml:/qdrant/config/production.yaml
 
+  namesrv:
+    image: apache/rocketmq:5.3.1
+    container_name: cs_rocketmq_namesrv
+    command: sh mqnamesrv
+    ports:
+      - "9876:9876"
+
+  broker:
+    image: apache/rocketmq:5.3.1
+    container_name: cs_rocketmq_broker
+    # Docker Desktop creates named volumes as root. The upstream image runs as
+    # an unprivileged UID that cannot initialize a fresh volume on Windows.
+    user: "0:0"
+    command: sh mqbroker -c /home/rocketmq/rocketmq-5.3.1/conf/broker.conf
+    environment:
+      NAMESRV_ADDR: namesrv:9876
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+    volumes:
+      - rocketmq_store:/home/rocketmq/store
+      - ./docker/rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.1/conf/broker.conf
+    depends_on:
+      namesrv:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "sh mqadmin clusterList -n namesrv:9876 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  ticket-service:
+    build:
+      context: ./ticket-service
+    container_name: cs_ticket_service
+    environment:
+      TICKET_DATABASE_URL: jdbc:postgresql://postgres:5432/customer_service
+      TICKET_DATABASE_USERNAME: cs_admin
+      TICKET_DATABASE_PASSWORD: cs_secret_2024
+      REDIS_URL: redis://redis:6379/0
+      ROCKETMQ_ENABLED: "true"
+      ROCKETMQ_NAME_SERVER: namesrv:9876
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+
   backend:
     build:
       context: ./backend
@@ -52,6 +105,9 @@ services:
       DATABASE_URL_SYNC: postgresql://cs_admin:cs_secret_2024@postgres:5432/customer_service
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
+      TICKET_SERVICE_URL: http://ticket-service:8080
+      ROCKETMQ_CONSUMER_ENABLED: "true"
+      ROCKETMQ_NAME_SERVER: namesrv:9876
       CORS_ORIGINS: http://localhost,http://localhost:5173
     ports:
       - "8000:8000"
@@ -63,6 +119,10 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
+      ticket-service:
+        condition: service_started
+      broker:
+        condition: service_healthy
 
   frontend:
     build:
@@ -77,3 +137,4 @@ volumes:
   pg_data:
   redis_data:
   qdrant_data:
+  rocketmq_store:

@@ -53,9 +53,10 @@ class SentimentAnalyzerAgent(BaseAgent):
 
         # Get historical sentiment for trend context
         existing_sentiment = state.get("sentiment")
+        memory_context = state.get("memory_context", "")
 
         try:
-            context = f"历史情绪: {json.dumps(existing_sentiment, ensure_ascii=False) if existing_sentiment else '无'}\n\n当前消息: {user_text}"
+            context = f"{memory_context}\n\n历史情绪: {json.dumps(existing_sentiment, ensure_ascii=False) if existing_sentiment else '无'}\n\n当前消息: {user_text}"
             raw = await self._call_llm(
                 system_prompt=SYSTEM_PROMPT,
                 user_message=context,

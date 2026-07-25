@@ -1,10 +1,9 @@
 """Embedding generator — supports local SentenceTransformer and remote OpenAI-compatible API."""
 
 from openai import OpenAI
-from sentence_transformers import SentenceTransformer
 from app.core.config import settings
 
-_embedder: SentenceTransformer | None = None
+_embedder: object | None = None
 _api_client: OpenAI | None = None
 _use_api: bool | None = None
 
@@ -17,12 +16,19 @@ def _should_use_api() -> bool:
     return _use_api
 
 
-def get_embedder() -> SentenceTransformer:
+def get_embedder():
     """Lazily load the local embedding model."""
     global _embedder
     if not _should_use_api() and _embedder is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError(
+                "Local embeddings require requirements-local-embeddings.txt; "
+                "configure EMBEDDING_API_KEY/EMBEDDING_API_BASE or install it"
+            ) from exc
         _embedder = SentenceTransformer(settings.embedding_model)
-    return _embedder  # type: ignore[return-value]
+    return _embedder
 
 
 def _get_api_client() -> OpenAI:

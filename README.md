@@ -223,3 +223,12 @@ multiagent/
 ## License
 
 MIT
+
+## Java 工单业务中心
+
+项目现已将工单业务从 Python Agent 服务拆分到独立的
+`ticket-service`（JDK 17 + Spring Boot 3 + MyBatis-Plus）。Python 只负责
+AI 决策与 RocketMQ 事件消费，工单表仅由 Java 写入。
+
+完整的接口、状态机、幂等、乐观锁和启动说明见
+[`docs/TICKET_SERVICE.md`](docs/TICKET_SERVICE.md)。

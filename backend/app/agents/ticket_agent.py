@@ -83,8 +83,10 @@ class TicketAgent(BaseAgent):
         intent = state.get("intent", {})
         sentiment = state.get("sentiment", {})
         profile = state.get("profile", {})
+        memory_context = state.get("memory_context", "")
 
         enriched = (
+            f"{memory_context}\n\n"
             f"意图: {json.dumps(intent, ensure_ascii=False)}\n"
             f"情绪: {json.dumps(sentiment, ensure_ascii=False)}\n"
             f"用户画像: {json.dumps(profile, ensure_ascii=False)}\n\n"

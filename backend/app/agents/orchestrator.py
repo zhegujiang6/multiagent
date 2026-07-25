@@ -16,6 +16,7 @@ from app.schemas.agent import AgentState
 from app.agents.base import BaseAgent, message_text
 from app.agents.registry import AgentRegistry
 from app.core.llm import DEFAULT_MODEL, FAST_MODEL
+from app.clients.java_ticket_client import get_java_ticket_client
 
 logger = logging.getLogger("customer_service.agent.orchestrator")
 
@@ -151,6 +152,34 @@ class OrchestratorAgent(BaseAgent):
         messages = state.get("messages", [])
         last_message = messages[-1] if messages else {}
         user_text = message_text(last_message)
+        normalized_text = user_text.strip().lower()
+
+        if any(
+            phrase in normalized_text
+            for phrase in ("创建工单", "新建工单", "提交工单", "生成工单")
+        ):
+            return {
+                "agent_decisions": [{
+                    "agent": "orchestrator",
+                    "decision": "create_ticket",
+                    "reason": "user explicitly requested a ticket",
+                    "route": "routing",
+                }],
+            }
+
+        if any(
+            phrase in normalized_text
+            for phrase in ("转人工", "人工客服", "找客服", "找人工", "联系人工")
+        ):
+            return {
+                "agent_decisions": [{
+                    "agent": "orchestrator",
+                    "decision": "escalate_to_human",
+                    "reason": "user explicitly requested a human agent",
+                    "route": "routing",
+                }],
+            }
+
         if user_text.strip().lower().rstrip("!！。.?？") in GREETING_MESSAGES:
             return {
                 "agent_decisions": [{
@@ -165,6 +194,8 @@ class OrchestratorAgent(BaseAgent):
         context = json.dumps({
             "intent": intent,
             "sentiment": sentiment,
+            "session_memory": state.get("session_memory", {}),
+            "user_memory": state.get("user_memory", {}),
         }, ensure_ascii=False)
 
         try:
@@ -222,6 +253,23 @@ class OrchestratorAgent(BaseAgent):
         category = draft.get("category", "other")
         title = draft.get("title", "您的问题")
 
+        priority_map = {
+            "P0": "URGENT",
+            "P1": "HIGH",
+            "P2": "MEDIUM",
+            "P3": "LOW",
+        }
+        ticket = await get_java_ticket_client().create_ticket(
+            request_id=state.get("request_id") or f"conv-{state.get('conversation_id')}",
+            conversation_id=state.get("conversation_id", "unknown"),
+            user_id=state.get("customer_id", "anonymous"),
+            category=str(category).upper(),
+            priority=priority_map.get(priority, "LOW"),
+            summary=draft.get("description") or title,
+        )
+        result["ticket_id"] = str(ticket["ticketId"])
+        result["ticket"] = ticket
+
         # SLA estimates
         sla_map = {"P0": "1小时内", "P1": "4小时内", "P2": "8小时内", "P3": "24小时内"}
         sla_text = sla_map.get(priority, "24小时内")
@@ -229,6 +277,7 @@ class OrchestratorAgent(BaseAgent):
         result["response"] = (
             f"我已收到您的问题「{title}」，并为您创建了工单进行跟进。\n\n"
             f"📋 **工单信息**\n"
+            f"- 工单号：{ticket['ticketId']}\n"
             f"- 优先级：{priority}\n"
             f"- 分类：{category}\n"
             f"- 预计处理时间：{sla_text}\n\n"

@@ -53,6 +53,10 @@ class AgentState(TypedDict, total=False):
     messages: Annotated[list[dict[str, Any]], add_messages]
     conversation_id: str
     customer_id: str
+    request_id: str
+    session_memory: dict[str, Any]
+    user_memory: dict[str, Any]
+    memory_context: str
 
     # Populated by parallel preprocessing
     intent: IntentResult | None
@@ -71,6 +75,7 @@ class AgentState(TypedDict, total=False):
     should_create_ticket: bool
     ticket_draft: TicketDraft | None
     ticket_id: str | None
+    ticket: dict[str, Any] | None
 
     # Audit trail
     agent_decisions: list[dict[str, Any]]

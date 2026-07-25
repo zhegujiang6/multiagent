@@ -261,6 +261,9 @@ async def submit_knowledge_feedback(body: KnowledgeFeedbackRequest):
         comment=body.comment,
         source=body.source,
     )
+    if body.conversation_id:
+        from app.services.memory_service import record_satisfaction_feedback
+        await record_satisfaction_feedback(str(body.conversation_id), body.feedback_type)
     return KnowledgeFeedbackResponse.model_validate(feedback)
 
 

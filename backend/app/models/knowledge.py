@@ -19,9 +19,9 @@ class KnowledgeArticle(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str | None] = mapped_column(String(100))
     tags: Mapped[list] = mapped_column(JSONB, default=list)
-    source_ticket_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tickets.id")
-    )
+    # Ticket data is owned by the Java service. Keep only its opaque identifier;
+    # never declare an ORM relationship or foreign key to the Java-owned table.
+    source_ticket_id: Mapped[str | None] = mapped_column(String(64))
     source_conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=True
     )

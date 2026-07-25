@@ -29,4 +29,3 @@ class Conversation(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     messages = relationship("Message", back_populates="conversation", lazy="selectin")
-    tickets = relationship("Ticket", back_populates="conversation", lazy="selectin")

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -11,6 +12,50 @@ from app.schemas.agent import AgentState
 from app.core.llm import FAST_MODEL
 
 logger = logging.getLogger("customer_service.agents.intent")
+
+INTENT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("complaint", ("投诉", "315", "消协", "律师", "曝光", "欺诈", "假货")),
+    ("refund", ("退款", "退货", "退钱", "refund")),
+    ("order_modify", ("取消订单", "修改订单", "修改地址", "改地址", "改配送")),
+    ("payment", ("支付失败", "支付", "扣款", "发票", "优惠券")),
+    ("shipping", ("物流", "快递", "配送", "运费", "没收到货", "未收到货")),
+    ("tech_support", ("报错", "故障", "崩溃", "打不开", "无法打开", "系统繁忙", "技术支持")),
+    ("account", ("登录", "密码", "账号", "账户", "绑定", "注销")),
+    ("membership", ("会员", "vip", "积分")),
+    ("product_info", ("商品", "产品", "库存", "价格", "规格")),
+    ("order_inquiry", ("订单", "订单号", "查单")),
+    ("chitchat", ("你好", "您好", "hello", "hi", "hey")),
+)
+
+ORDER_ID_PATTERN = re.compile(
+    r"(?:订单号|order(?:\s*id)?)\s*[：:#-]?\s*([a-z0-9][a-z0-9_-]{3,})",
+    re.IGNORECASE,
+)
+
+
+def classify_intent_with_rules(user_text: str) -> dict[str, Any]:
+    """Provide a useful deterministic fallback when the LLM is unavailable."""
+    normalized = user_text.strip().lower()
+    label = "faq"
+    confidence = 0.3
+
+    for candidate, keywords in INTENT_KEYWORDS:
+        if any(keyword in normalized for keyword in keywords):
+            label = candidate
+            confidence = 0.85
+            break
+
+    entities: list[dict[str, str]] = []
+    order_match = ORDER_ID_PATTERN.search(normalized)
+    if order_match:
+        entities.append({"name": "order_id", "value": order_match.group(1)})
+
+    return {
+        "label": label,
+        "confidence": confidence,
+        "entities": entities,
+        "sub_intents": [],
+    }
 
 SYSTEM_PROMPT = """你是一个专业的客服意图分类器。分析用户消息，输出JSON格式的分类结果。
 
@@ -55,11 +100,17 @@ class IntentClassifierAgent(BaseAgent):
 
         last_msg = messages[-1]
         user_text = message_text(last_msg)
+        memory_context = state.get("memory_context", "")
+        prompt_input = (
+            f"{memory_context}\n\n当前用户消息：{user_text}"
+            if memory_context
+            else user_text
+        )
 
         try:
             raw = await self._call_llm(
                 system_prompt=SYSTEM_PROMPT,
-                user_message=user_text,
+                user_message=prompt_input,
                 model=FAST_MODEL,
                 max_tokens=512,
             )
@@ -72,7 +123,7 @@ class IntentClassifierAgent(BaseAgent):
             }
         except Exception as e:
             logger.warning(f"Intent classification failed: {e}, using fallback")
-            intent = {"label": "faq", "confidence": 0.3, "entities": [], "sub_intents": []}
+            intent = classify_intent_with_rules(user_text)
 
         return {
             "intent": intent,

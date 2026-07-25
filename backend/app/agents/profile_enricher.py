@@ -1,9 +1,10 @@
 """Profile Enricher Agent — enhances user context from database/CMS."""
 
 import logging
+import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from openai import AsyncOpenAI
 
 from app.agents.base import BaseAgent
@@ -27,14 +28,17 @@ class ProfileEnricherAgent(BaseAgent):
 
     async def execute(self, state: AgentState) -> dict[str, Any]:
         customer_id = state.get("customer_id", "")
+        user_memory = state.get("user_memory") or {}
+        memory_history_count = int(user_memory.get("conversation_count", 0) or 0)
+        memory_tags = list(user_memory.get("tags", []) or [])
 
         if not customer_id or customer_id == "anonymous":
             # Anonymous user — return default profile
             return {
                 "profile": {
                     "tier": "standard",
-                    "history_count": 0,
-                    "tags": [],
+                    "history_count": memory_history_count,
+                    "tags": memory_tags,
                     "name": "访客",
                     "email": "",
                     "special_handling": "",
@@ -44,9 +48,12 @@ class ProfileEnricherAgent(BaseAgent):
 
         try:
             async with async_session_factory() as session:
-                stmt = select(User).where(
-                    (User.id == customer_id) | (User.external_id == customer_id)
-                )
+                predicates = [User.external_id == customer_id]
+                try:
+                    predicates.append(User.id == uuid.UUID(customer_id))
+                except ValueError:
+                    pass
+                stmt = select(User).where(or_(*predicates))
                 result = await session.execute(stmt)
                 user = result.scalar_one_or_none()
 
@@ -54,8 +61,8 @@ class ProfileEnricherAgent(BaseAgent):
                     tier = user.tier or "standard"
                     profile = {
                         "tier": tier,
-                        "history_count": 0,  # MVP: count from conversations table later
-                        "tags": user.tags or [],
+                        "history_count": memory_history_count,
+                        "tags": list(dict.fromkeys([*(user.tags or []), *memory_tags])),
                         "name": user.name or "",
                         "email": user.email or "",
                         "special_handling": TIER_NOTES.get(tier, ""),
@@ -64,8 +71,8 @@ class ProfileEnricherAgent(BaseAgent):
                 else:
                     profile = {
                         "tier": "standard",
-                        "history_count": 0,
-                        "tags": [],
+                        "history_count": memory_history_count,
+                        "tags": memory_tags,
                         "name": "",
                         "email": "",
                         "special_handling": "",
@@ -75,8 +82,8 @@ class ProfileEnricherAgent(BaseAgent):
             logger.warning(f"Profile enrichment failed: {e}")
             profile = {
                 "tier": "standard",
-                "history_count": 0,
-                "tags": [],
+                "history_count": memory_history_count,
+                "tags": memory_tags,
                 "name": "",
                 "email": "",
                 "special_handling": "",

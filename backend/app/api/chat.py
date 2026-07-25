@@ -21,7 +21,9 @@ from app.services.conversation_service import (
     process_message,
     process_message_streaming,
 )
+from app.services.memory_service import get_conversation_memory
 from app.models.conversation import Conversation
+from app.core.websocket_manager import websocket_manager
 
 logger = logging.getLogger("customer_service.api.chat")
 router = APIRouter(prefix="/api/v1", tags=["chat"])
@@ -56,6 +58,19 @@ async def get_conversation_messages(conversation_id: uuid.UUID, limit: int = 50)
         "conversation_id": str(conversation_id),
         "messages": [MessageResponse.model_validate(m) for m in messages],
         "total": len(messages),
+    }
+
+
+@router.get("/conversations/{conversation_id}/memory")
+async def get_conversation_memory_endpoint(conversation_id: uuid.UUID):
+    """Return the compact task state used to continue this conversation."""
+    conv = await get_conversation(str(conversation_id))
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    memory = await get_conversation_memory(str(conversation_id))
+    return {
+        "conversation_id": str(conversation_id),
+        "memory": memory,
     }
 
 
@@ -116,8 +131,8 @@ async def close_conversation(conversation_id: uuid.UUID):
         await session.commit()
 
     # Trigger background knowledge extraction
-    from app.services.ticket_service import _auto_extract_knowledge
-    asyncio.create_task(_auto_extract_knowledge(
+    from app.services.knowledge_lifecycle_service import auto_extract_knowledge
+    asyncio.create_task(auto_extract_knowledge(
         ticket_id=None,  # No ticket — conversation-only close
         conversation_id=conversation_id,
     ))
@@ -137,7 +152,7 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str = ""):
 
     Client connects with: ws://host/api/v1/ws/chat?conversation_id={id}
     """
-    await websocket.accept()
+    await websocket_manager.connect(conversation_id, websocket)
     logger.info(f"WebSocket connected: conversation={conversation_id}")
 
     try:
@@ -148,7 +163,7 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str = ""):
             msg_type = data.get("type", "message")
 
             if msg_type == "ping":
-                await websocket.send_json({"type": "pong"})
+                await websocket_manager.send_json(websocket, {"type": "pong"})
                 continue
 
             if msg_type == "typing":
@@ -158,22 +173,30 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str = ""):
             if msg_type == "message":
                 content = data.get("payload", {}).get("content", "")
                 if not content:
-                    await websocket.send_json({"type": "error", "payload": {"code": "empty_message", "message": "Message content is required"}})
+                    await websocket_manager.send_json(websocket, {"type": "error", "payload": {"code": "empty_message", "message": "Message content is required"}})
                     continue
 
-                # Process with streaming updates
+                conv = await get_conversation(conversation_id)
+                if not conv:
+                    await websocket_manager.send_json(websocket, {"type": "error", "payload": {"code": "conversation_not_found", "message": "Conversation not found"}})
+                    continue
+
+                # Process with streaming updates. The server, not the browser,
+                # owns the customer identity used for durable memory.
                 async for update in process_message_streaming(
                     conversation_id=conversation_id,
                     user_message=content,
-                    customer_id="anonymous",  # TODO: extract from auth
+                    customer_id=conv.customer_id,
                 ):
-                    await websocket.send_json(update)
+                    await websocket_manager.send_json(websocket, update)
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: conversation={conversation_id}")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         try:
-            await websocket.send_json({"type": "error", "payload": {"code": "internal_error", "message": str(e)}})
+            await websocket_manager.send_json(websocket, {"type": "error", "payload": {"code": "internal_error", "message": str(e)}})
         except Exception:
             pass
+    finally:
+        await websocket_manager.disconnect(conversation_id, websocket)

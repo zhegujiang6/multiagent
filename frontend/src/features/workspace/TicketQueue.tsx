@@ -48,6 +48,28 @@ export const TicketQueue: React.FC<TicketQueueProps> = ({
     fetchTickets();
   }, [fetchTickets]);
 
+  useEffect(() => {
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(
+      `${scheme}://${window.location.host}/api/v1/ws/chat`,
+    );
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (
+          message.type === "ticket_created" ||
+          message.type === "ticket_updated" ||
+          message.type === "ticket_sla_overdue"
+        ) {
+          fetchTickets();
+        }
+      } catch {
+        // Ignore non-JSON messages and keep the queue connected.
+      }
+    };
+    return () => socket.close();
+  }, [fetchTickets]);
+
   // Client-side search filter
   const filtered = tickets.filter((t) => {
     if (!search) return true;
@@ -96,11 +118,13 @@ export const TicketQueue: React.FC<TicketQueueProps> = ({
                          focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             >
               <option value="">All Statuses</option>
-              <option value="open">Open</option>
+              <option value="new">New</option>
+              <option value="assigned">Assigned</option>
               <option value="in_progress">In Progress</option>
               <option value="pending">Pending</option>
               <option value="resolved">Resolved</option>
               <option value="closed">Closed</option>
+              <option value="reopened">Reopened</option>
             </select>
           </div>
           <div className="relative flex-1">

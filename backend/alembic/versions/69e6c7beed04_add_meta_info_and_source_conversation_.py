@@ -55,23 +55,6 @@ def upgrade() -> None:
                nullable=False,
                existing_server_default=sa.text("'{}'::jsonb"))
     op.drop_index(op.f('idx_messages_conv'), table_name='messages')
-    op.drop_index(op.f('idx_ticket_events_ticket'), table_name='ticket_events')
-    op.alter_column('tickets', 'sla_warning_sent',
-               existing_type=sa.BOOLEAN(),
-               nullable=False,
-               existing_server_default=sa.text('false'))
-    op.alter_column('tickets', 'sla_escalated',
-               existing_type=sa.BOOLEAN(),
-               nullable=False,
-               existing_server_default=sa.text('false'))
-    op.alter_column('tickets', 'metadata',
-               existing_type=postgresql.JSONB(astext_type=sa.Text()),
-               nullable=False,
-               existing_server_default=sa.text("'{}'::jsonb"))
-    op.drop_index(op.f('idx_tickets_assignee'), table_name='tickets')
-    op.drop_index(op.f('idx_tickets_customer'), table_name='tickets')
-    op.drop_index(op.f('idx_tickets_sla'), table_name='tickets')
-    op.drop_index(op.f('idx_tickets_status'), table_name='tickets')
     op.alter_column('users', 'tier',
                existing_type=sa.VARCHAR(length=30),
                nullable=False,
@@ -101,23 +84,6 @@ def downgrade() -> None:
                existing_type=sa.VARCHAR(length=30),
                nullable=True,
                existing_server_default=sa.text("'standard'::character varying"))
-    op.create_index(op.f('idx_tickets_status'), 'tickets', ['status'], unique=False)
-    op.create_index(op.f('idx_tickets_sla'), 'tickets', ['sla_deadline'], unique=False)
-    op.create_index(op.f('idx_tickets_customer'), 'tickets', ['customer_id'], unique=False)
-    op.create_index(op.f('idx_tickets_assignee'), 'tickets', ['assigned_to'], unique=False)
-    op.alter_column('tickets', 'metadata',
-               existing_type=postgresql.JSONB(astext_type=sa.Text()),
-               nullable=True,
-               existing_server_default=sa.text("'{}'::jsonb"))
-    op.alter_column('tickets', 'sla_escalated',
-               existing_type=sa.BOOLEAN(),
-               nullable=True,
-               existing_server_default=sa.text('false'))
-    op.alter_column('tickets', 'sla_warning_sent',
-               existing_type=sa.BOOLEAN(),
-               nullable=True,
-               existing_server_default=sa.text('false'))
-    op.create_index(op.f('idx_ticket_events_ticket'), 'ticket_events', ['ticket_id', 'created_at'], unique=False)
     op.create_index(op.f('idx_messages_conv'), 'messages', ['conversation_id', 'created_at'], unique=False)
     op.alter_column('messages', 'metadata',
                existing_type=postgresql.JSONB(astext_type=sa.Text()),

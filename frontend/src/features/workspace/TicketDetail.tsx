@@ -23,19 +23,23 @@ interface TicketDetailProps {
 const API_BASE = "/api/v1";
 
 const STATUS_LABELS: Record<string, string> = {
-  open: "Open",
+  new: "New",
+  assigned: "Assigned",
   in_progress: "In Progress",
   pending: "Pending",
   resolved: "Resolved",
   closed: "Closed",
+  reopened: "Reopened",
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  open: "bg-blue-100 text-blue-800",
+  new: "bg-blue-100 text-blue-800",
+  assigned: "bg-indigo-100 text-indigo-800",
   in_progress: "bg-purple-100 text-purple-800",
   pending: "bg-yellow-100 text-yellow-800",
   resolved: "bg-green-100 text-green-800",
   closed: "bg-gray-100 text-gray-600",
+  reopened: "bg-orange-100 text-orange-800",
 };
 
 const EVENT_ICONS: Record<string, React.ReactNode> = {
@@ -50,7 +54,7 @@ const EVENT_ICONS: Record<string, React.ReactNode> = {
 
 function getEventIcon(triggeredBy: string, fromStatus: string, toStatus: string): React.ReactNode {
   const key = triggeredBy.toLowerCase();
-  if (key.includes("create") || (!fromStatus && toStatus === "open"))
+  if (key.includes("create") || (!fromStatus && toStatus === "new"))
     return EVENT_ICONS.create;
   if (key.includes("assign")) return EVENT_ICONS.assign;
   if (key.includes("resolve") || toStatus === "resolved")
@@ -111,28 +115,28 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId }) => {
     [ticketId, comment],
   );
 
-  const addComment = useCallback(async () => {
-    if (!comment.trim()) return;
+  const assignTicket = useCallback(async () => {
     setActionLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/tickets/${ticketId}/comments`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ comment: comment.trim() }),
-        },
-      );
+      const res = await fetch(`${API_BASE}/tickets/${ticketId}/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignee_id: "current-agent",
+          operator_id: "current-agent",
+          reason: comment || "Claimed from agent workspace",
+        }),
+      });
       if (res.ok) {
+        setTicket(await res.json());
         setComment("");
-        fetchTicket(); // Refresh to get new event
       }
     } catch {
       // Silently handle
     } finally {
       setActionLoading(false);
     }
-  }, [ticketId, comment, fetchTicket]);
+  }, [ticketId, comment]);
 
   // ── Loading state ──
   if (loading) {
@@ -306,15 +310,21 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId }) => {
       {/* ── Action buttons ── */}
       <div className="border-t pt-4">
         <div className="flex flex-wrap items-center gap-2">
-          {ticket.status === "open" && (
-            <>
-              <ActionButton
-                label="Claim"
-                onClick={() => updateStatus("in_progress")}
-                color="blue"
-                loading={actionLoading}
-              />
-            </>
+          {ticket.status === "new" && (
+            <ActionButton
+              label="Claim"
+              onClick={assignTicket}
+              color="blue"
+              loading={actionLoading}
+            />
+          )}
+          {ticket.status === "assigned" && (
+            <ActionButton
+              label="Start"
+              onClick={() => updateStatus("in_progress")}
+              color="blue"
+              loading={actionLoading}
+            />
           )}
           {ticket.status === "in_progress" && (
             <>
@@ -341,19 +351,42 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId }) => {
                 loading={actionLoading}
               />
               <ActionButton
+                label="Resume"
+                onClick={() => updateStatus("in_progress")}
+                color="blue"
+                loading={actionLoading}
+              />
+            </>
+          )}
+          {ticket.status === "resolved" && (
+            <>
+              <ActionButton
+                label="Close"
+                onClick={() => updateStatus("closed")}
+                color="green"
+                loading={actionLoading}
+              />
+              <ActionButton
                 label="Reopen"
-                onClick={() => updateStatus("open")}
+                onClick={() => updateStatus("reopened")}
                 color="orange"
                 loading={actionLoading}
               />
             </>
           )}
-          {(ticket.status === "resolved" ||
-            ticket.status === "closed") && (
+          {ticket.status === "closed" && (
             <ActionButton
               label="Reopen"
-              onClick={() => updateStatus("open")}
+              onClick={() => updateStatus("reopened")}
               color="red"
+              loading={actionLoading}
+            />
+          )}
+          {ticket.status === "reopened" && (
+            <ActionButton
+              label="Resume"
+              onClick={() => updateStatus("in_progress")}
+              color="blue"
               loading={actionLoading}
             />
           )}
@@ -365,24 +398,10 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId }) => {
             type="text"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Add a comment..."
+            placeholder="Optional reason for the next action..."
             className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm
                        focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addComment();
-              }
-            }}
           />
-          <button
-            onClick={addComment}
-            disabled={!comment.trim() || actionLoading}
-            className="rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white
-                       hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-          >
-            Comment
-          </button>
         </div>
       </div>
     </div>

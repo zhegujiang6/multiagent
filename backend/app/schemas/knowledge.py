@@ -12,7 +12,7 @@ class KnowledgeArticleResponse(BaseModel):
     content: str
     category: str | None = None
     tags: list = []
-    source_ticket_id: uuid.UUID | None = None
+    source_ticket_id: str | None = None
     source_conversation_id: uuid.UUID | None = None
     status: str = "draft"
     canonical_key: str = ""
